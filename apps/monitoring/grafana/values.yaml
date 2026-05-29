@@ -11,6 +11,9 @@ persistence:
 
 adminPassword: "admin123"
 
+service:
+  type: NodePort
+
 datasources:
   datasources.yaml:
     apiVersion: 1

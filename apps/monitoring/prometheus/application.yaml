@@ -10,8 +10,26 @@ spec:
     chart: prometheus
     targetRevision: 27.x
     helm:
-      valueFiles:
-        - values.yaml
+      values: |
+        server:
+          retention: 1d
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 256Mi
+              cpu: 500m
+          persistentVolume:
+            enabled: false
+        alertmanager:
+          enabled: false
+        pushgateway:
+          enabled: false
+        nodeExporter:
+          enabled: true
+        kubeStateMetrics:
+          enabled: true
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring

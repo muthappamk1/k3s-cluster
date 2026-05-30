@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: k3s-app
-        image: ghcr.io/muthappamk1/k3s-app:fe286af
+        image: ghcr.io/muthappamk1/k3s-app:54d6ee8
         ports:
         - containerPort: 5000
         env:

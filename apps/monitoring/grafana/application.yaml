@@ -23,6 +23,11 @@ spec:
         adminPassword: "admin123"
         service:
           type: NodePort
+        ingress:
+          enabled: true
+          ingressClassName: traefik
+          hosts:
+            - grafana.local
         datasources:
           datasources.yaml:
             apiVersion: 1

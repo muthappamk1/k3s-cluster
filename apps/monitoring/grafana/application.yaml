@@ -19,7 +19,9 @@ spec:
             memory: 128Mi
             cpu: 200m
         persistence:
-          enabled: false
+          enabled: true
+          storageClassName: longhorn
+          size: 1Gi
         adminPassword: "admin123"
         service:
           type: NodePort

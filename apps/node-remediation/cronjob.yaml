@@ -44,7 +44,7 @@ spec:
                 - -c
                 - |
                   #!/bin/bash
-                  set -euo pipefail
+                  set -uo pipefail
 
                   # How long a node must be NotReady before we intervene.
                   # Matches Kubernetes' own 5-minute wait before rescheduling.

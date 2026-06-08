@@ -53,7 +53,7 @@ spec:
                   echo "=== Node Remediation Check: $(date -u) ==="
 
                   # Get nodes currently showing as NotReady
-                  NOT_READY_NODES=$(kubectl get nodes --no-headers | grep "NotReady" | awk '{print $1}')
+                  NOT_READY_NODES=$(kubectl get nodes --no-headers | grep "NotReady" | awk '{print $1}' || true)
 
                   if [ -z "$NOT_READY_NODES" ]; then
                     echo "All nodes healthy. Nothing to do."

@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: node-remediation
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/muthappamk1/k3s-cluster
+    targetRevision: HEAD
+    path: apps/node-remediation
+    # Exclude this file itself — ArgoCD shouldn't try to apply its own Application definition
+    directory:
+      exclude: argocd-application.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

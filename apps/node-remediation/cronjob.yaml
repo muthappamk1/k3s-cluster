@@ -1,0 +1,143 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: node-remediation
+  namespace: kube-system
+spec:
+  # Run every 2 minutes — responsive but not noisy
+  schedule: "*/2 * * * *"
+
+  # If a previous run is still going, skip this cycle (don't pile up jobs)
+  concurrencyPolicy: Forbid
+
+  # Keep only the last 3 successful and 1 failed job logs for debugging
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+
+  jobTemplate:
+    spec:
+      # Give the job 90 seconds to complete before Kubernetes kills it
+      activeDeadlineSeconds: 90
+
+      template:
+        spec:
+          serviceAccountName: node-remediation
+
+          # Prefer to run on the master node so it survives worker failures
+          nodeSelector:
+            node-role.kubernetes.io/master: "true"
+          tolerations:
+            - key: node-role.kubernetes.io/master
+              operator: Exists
+              effect: NoSchedule
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+              effect: NoSchedule
+
+          restartPolicy: OnFailure
+
+          containers:
+            - name: remediation
+              image: bitnami/kubectl:1.31
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  #!/bin/bash
+                  set -euo pipefail
+
+                  # How long a node must be NotReady before we intervene.
+                  # Matches Kubernetes' own 5-minute wait before rescheduling.
+                  THRESHOLD_SECONDS=300
+
+                  echo "=== Node Remediation Check: $(date -u) ==="
+
+                  # Get nodes currently showing as NotReady
+                  NOT_READY_NODES=$(kubectl get nodes --no-headers | grep "NotReady" | awk '{print $1}')
+
+                  if [ -z "$NOT_READY_NODES" ]; then
+                    echo "All nodes healthy. Nothing to do."
+                    exit 0
+                  fi
+
+                  for NODE in $NOT_READY_NODES; do
+                    echo ""
+                    echo "--- Found NotReady node: $NODE ---"
+
+                    # Get the timestamp when the Ready condition last changed to False/Unknown
+                    TRANSITION_TIME=$(kubectl get node "$NODE" \
+                      -o jsonpath='{.status.conditions[?(@.type=="Ready")].lastTransitionTime}')
+
+                    if [ -z "$TRANSITION_TIME" ]; then
+                      echo "Could not read transition time for $NODE — skipping."
+                      continue
+                    fi
+
+                    # Convert ISO 8601 timestamp to epoch seconds (GNU date, available in bitnami/kubectl)
+                    TRANSITION_EPOCH=$(date -d "$TRANSITION_TIME" +%s)
+                    NOW_EPOCH=$(date +%s)
+                    SECONDS_DOWN=$(( NOW_EPOCH - TRANSITION_EPOCH ))
+
+                    echo "Node $NODE has been NotReady for ${SECONDS_DOWN}s (threshold: ${THRESHOLD_SECONDS}s)"
+
+                    if [ "$SECONDS_DOWN" -lt "$THRESHOLD_SECONDS" ]; then
+                      echo "Below threshold — waiting before remediating to avoid false-positive on network blip."
+                      continue
+                    fi
+
+                    echo "Threshold exceeded. Starting remediation for $NODE..."
+
+                    # ── Step 1: Force-delete stuck Terminating pods ──────────────────
+                    echo ""
+                    echo "[1/2] Checking for stuck Terminating pods on $NODE..."
+
+                    STUCK_PODS=$(kubectl get pods -A \
+                      --field-selector="spec.nodeName=${NODE}" \
+                      --no-headers 2>/dev/null \
+                      | grep "Terminating" || true)
+
+                    if [ -n "$STUCK_PODS" ]; then
+                      echo "Found stuck pods — force-deleting:"
+                      echo "$STUCK_PODS" | while IFS= read -r line; do
+                        NS=$(echo "$line" | awk '{print $1}')
+                        POD=$(echo "$line" | awk '{print $2}')
+                        echo "  Deleting pod/$POD in $NS"
+                        kubectl delete pod "$POD" -n "$NS" --force --grace-period=0 2>&1 || \
+                          echo "  (already gone or error — continuing)"
+                      done
+                    else
+                      echo "No stuck Terminating pods found."
+                    fi
+
+                    # ── Step 2: Clear VolumeAttachment locks ─────────────────────────
+                    echo ""
+                    echo "[2/2] Checking for VolumeAttachments locked to $NODE..."
+
+                    STUCK_VAS=$(kubectl get volumeattachment --no-headers 2>/dev/null \
+                      | grep "$NODE" | awk '{print $1}' || true)
+
+                    if [ -n "$STUCK_VAS" ]; then
+                      echo "Found locked VolumeAttachments — deleting:"
+                      for VA in $STUCK_VAS; do
+                        echo "  Deleting VolumeAttachment/$VA"
+                        kubectl delete volumeattachment "$VA" 2>&1 || \
+                          echo "  (already gone or error — continuing)"
+                      done
+                    else
+                      echo "No locked VolumeAttachments found."
+                    fi
+
+                    echo ""
+                    echo "Remediation complete for $NODE."
+                  done
+
+                  echo ""
+                  echo "=== Check complete: $(date -u) ==="
+
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi

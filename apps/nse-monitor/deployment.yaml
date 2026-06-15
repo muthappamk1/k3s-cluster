@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nse-monitor
+  namespace: default
+spec:
+  replicas: 1    # Must be 1 — multiple pods would race to write the same Excel files
+  selector:
+    matchLabels:
+      app: nse-monitor
+  template:
+    metadata:
+      labels:
+        app: nse-monitor
+    spec:
+      initContainers:
+        - name: init-app
+          image: ghcr.io/muthappamk1/nse-market-monitor:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "Syncing app code from image to PVC..."
+
+              # Recreate directory structure
+              find /app-src -type d | while IFS= read -r dir; do
+                target="/app/${dir#/app-src/}"
+                mkdir -p "$target"
+              done
+
+              # Copy all files — but for data files (.xlsx, .parquet, .csv)
+              # only copy if they don't already exist on the PVC.
+              # This means code is always up-to-date with the image,
+              # but generated scan results survive pod restarts.
+              find /app-src -type f | while IFS= read -r file; do
+                ext="${file##*.}"
+                target="/app/${file#/app-src/}"
+                case "$ext" in
+                  xlsx|parquet|csv)
+                    if [ ! -f "$target" ]; then
+                      cp "$file" "$target"
+                    fi
+                    ;;
+                  *)
+                    cp "$file" "$target"
+                    ;;
+                esac
+              done
+
+              echo "Init complete ✅ — app ready at /app"
+          volumeMounts:
+            - name: data
+              mountPath: /app
+
+      containers:
+        - name: nse-monitor
+          image: ghcr.io/muthappamk1/nse-market-monitor:latest
+          ports:
+            - containerPort: 9731
+          envFrom:
+            - configMapRef:
+                name: nse-monitor-config
+            - secretRef:
+                name: nse-monitor-secret
+          volumeMounts:
+            - name: data
+              mountPath: /app
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "768Mi"    # Scans pull a lot of yfinance data — give it room
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9731
+            initialDelaySeconds: 30    # Give uvicorn time to start and load dependencies
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9731
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: nse-monitor-data

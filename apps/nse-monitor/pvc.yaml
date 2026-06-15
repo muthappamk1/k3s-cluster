@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nse-monitor-data
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 5Gi
+# This PVC holds the entire running app (/app):
+#   /app/server/                         — server code + static files
+#   /app/relative-performance/           — notebooks, run_agent.py, Master_Report.xlsx, category Excels
+#   /app/momentum-quant-screener/        — main.py, src/, quant/, output/*.xlsx, cache/*.parquet, logs/
+#
+# Code files are refreshed from the image on every pod start (init container).
+# Data files (.xlsx, .parquet, .csv) are preserved across pod restarts.

@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nse-monitor
+  namespace: default
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  rules:
+    - host: nse-monitor.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nse-monitor
+                port:
+                  number: 9731
+# To access from your Mac, add to /etc/hosts:
+#   192.168.0.110  nse-monitor.local
+# Then open http://nse-monitor.local in your browser

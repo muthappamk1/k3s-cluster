@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nse-monitor-config
+  namespace: default
+data:
+  # Server
+  PORT: "9731"
+  HOST: "0.0.0.0"    # Must be 0.0.0.0 in K8s — overrides the 127.0.0.1 default in server/.env
+
+  # Point the server at the PVC-backed directories (not the image's /app-src)
+  RELATIVE_PERF_DIR: "/app/relative-performance"
+  SCREENER_DIR: "/app/momentum-quant-screener"
+
+  # Market data cache TTL (seconds)
+  MARKET_DATA_CACHE_TTL: "300"
+
+  # RSS feeds
+  RSS_FEEDS: "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms,https://www.business-standard.com/rss/markets-106.rss,https://feeds.reuters.com/reuters/businessNews,https://feeds.bbci.co.uk/news/business/rss.xml"
+
+  # Scheduler — RP scan Tue-Sat midnight IST, screener Saturday 01:00 IST
+  RP_SCAN_DAYS: "tue-sat"
+  RP_SCAN_HOUR: "0"
+  RP_SCAN_MINUTE: "0"
+  SCREENER_SCAN_DAY: "sat"
+  SCREENER_SCAN_HOUR: "1"
+  SCREENER_SCAN_MINUTE: "0"
